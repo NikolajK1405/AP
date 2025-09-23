@@ -1,0 +1,26 @@
+Atom ::= var
+       | int
+       | bool
+       | "(" Exp ")"
+
+FExp' ::= (* empty *)
+        | Atom FExp'
+
+FExp ::= Atom FExp'
+
+LExp ::= "if" Exp "then" Exp "else" Exp
+       | FExp
+
+Exp1' ::= (* empty *)
+        | "*" Atom Exp1'
+        | "/" Atom Exp1'
+
+Exp1 ::= Atom Exp1'
+
+Exp0' ::= (* empty *)
+        | "+" Exp1 Exp0'
+        | "-" Exp1 Exp0'
+
+Exp0 ::= Exp1 Exp0'
+
+Exp  ::= Exp0

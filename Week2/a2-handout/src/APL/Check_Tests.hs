@@ -23,4 +23,7 @@ tests :: TestTree
 tests =
   testGroup
     "Checking"
-    []
+    [ testNeg $ Var "x",
+      testPos $ CstInt 2,
+      testPos $ Lambda "x" (Var "x")
+    ]
