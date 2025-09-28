@@ -11,11 +11,16 @@ FExp ::= Atom FExp'
 LExp ::= "if" Exp "then" Exp "else" Exp
        | FExp
 
-Exp1' ::= (* empty *)
-        | "*" Atom Exp1'
-        | "/" Atom Exp1'
+Exp2' ::= (* empty *)
+        | "**" LExp Exp2'
 
-Exp1 ::= Atom Exp1'
+Exp2 ::= LExp Exp2'
+
+Exp1' ::= (* empty *)
+        | "*" Exp2 Exp1'
+        | "/" Exp2 Exp1'
+
+Exp1 ::= Exp2 Exp1'
 
 Exp0' ::= (* empty *)
         | "+" Exp1 Exp0'
@@ -23,4 +28,9 @@ Exp0' ::= (* empty *)
 
 Exp0 ::= Exp1 Exp0'
 
-Exp  ::= Exp0
+ExpEq' ::= (* empty *)
+        | "==" Exp0 ExpEq'
+
+ExpEq ::= Exp0 ExpEq'
+
+Exp  ::= ExpEq
