@@ -33,7 +33,14 @@ keywords =
     "false",
     "print",
     "get",
-    "put"
+    "put",
+    "let",
+    "in",
+    "try",
+    "catch",
+    "loop",
+    "for",
+    "do"
   ]
 
 lVName :: Parser VName
@@ -88,7 +95,10 @@ pFExp = pAtom >>= chain
 pLExp :: Parser Exp
 pLExp =
   choice
-    [ If
+    [ Lambda 
+        <$> (lString "\\" *> lVName)
+        <*> (lString "->" *> pExp),
+      If
         <$> (lKeyword "if" *> pExp)
         <*> (lKeyword "then" *> pExp)
         <*> (lKeyword "else" *> pExp),
@@ -100,6 +110,16 @@ pLExp =
       KvPut
         <$> (lKeyword "put" *> pAtom)
         <*> pAtom,
+      Let 
+        <$> (lKeyword "let" *> lVName)
+        <*> (lString "=" *> pExp)
+        <*> (lKeyword "in" *> pExp),
+      TryCatch 
+        <$> (lKeyword "try" *> pExp) <*> (lKeyword "catch" *> pExp),
+      ForLoop
+        <$> ((,) <$> (lKeyword "loop" *> lVName) <*> (lString "=" *> pExp))
+        <*> ((,) <$> (lKeyword "for"  *> lVName) <*> (lString "<" *> pExp))
+        <*> (lKeyword "do" *> pExp),
       pFExp
     ]
 
