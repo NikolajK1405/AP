@@ -100,7 +100,7 @@ tests =
           parserTestFail "try x",
           parserTestFail " try x catch",
           parserTest "try f x catch g y" $ TryCatch (Apply (Var "f") (Var "x")) (Apply (Var "g") (Var "y")),
-          parserTest "loop x = 1 for n < 10 do x + 1" $ ForLoop ("x", (CstInt 1)) ("n", CstInt 10) (Add (Var "x") (CstInt 1)),
+          parserTest "loop x = 1 for n < 10 do x + 1" $ ForLoop ("x", CstInt 1) ("n", CstInt 10) (Add (Var "x") (CstInt 1)),
           parserTestFail "loop let for n < 10 do x + 1",
           parserTestFail "loop true = 1 for n < 10 do x + 1",
           parserTestFail "loop x = 1 for n < 10 x + 1"
