@@ -64,5 +64,23 @@ tests =
         "Lexing edge cases"
         [ parserTest "2 " $ CstInt 2,
           parserTest " 2" $ CstInt 2
+        ],
+      testGroup
+        "Function application"
+        [ parserTest "x y z" $ Apply (Apply (Var "x") (Var "y")) (Var "z"),
+          parserTest "x(y z)" $ Apply (Var "x") (Apply (Var "y") (Var "z")),
+          parserTestFail "x if x then y else z"
+        ],
+      testGroup
+        "Equality and power operators"
+        [ parserTest "x*y**z" $ Mul (Var "x") (Pow (Var "y") (Var "z")),
+          parserTest "x+y==y+x" $ Eql (Add (Var "x") (Var "y")) (Add (Var "y") (Var "x"))
+        ],
+      testGroup
+        "Printing, putting, and getting"
+        [ parserTest "put x y" $ KvPut (Var "x") (Var "y"),
+          parserTest "get x + y" $ Add (KvGet (Var "x")) (Var "y"),
+          parserTest "getx" $ Var "getx",
+          parserTest "print \"foo\" x" $ Print "foo" (Var "x")
         ]
     ]
