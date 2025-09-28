@@ -9,6 +9,9 @@ FExp' ::= (* empty *)
 FExp ::= Atom FExp'
 
 LExp ::= "if" Exp "then" Exp "else" Exp
+       | "print" string Atom
+       | "get" Atom
+       | "put" Atom Atom
        | FExp
 
 Exp2' ::= (* empty *)

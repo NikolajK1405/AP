@@ -30,7 +30,10 @@ keywords =
     "then",
     "else",
     "true",
-    "false"
+    "false",
+    "print",
+    "get",
+    "put"
   ]
 
 lVName :: Parser VName
@@ -59,6 +62,9 @@ pBool =
       const False <$> lKeyword "false"
     ]
 
+lStringA :: Parser String
+lStringA = lexeme $ satisfy (== '"') *> many (satisfy (/= '"')) <* satisfy (== '"')
+
 pAtom :: Parser Exp
 pAtom =
   choice
@@ -86,6 +92,14 @@ pLExp =
         <$> (lKeyword "if" *> pExp)
         <*> (lKeyword "then" *> pExp)
         <*> (lKeyword "else" *> pExp),
+      Print
+        <$> (lKeyword "print" *> lStringA)
+        <*> pAtom,
+      KvGet
+        <$> (lKeyword "get" *> pAtom),
+      KvPut
+        <$> (lKeyword "put" *> pAtom)
+        <*> pAtom,
       pFExp
     ]
 
