@@ -8,14 +8,14 @@ FExp' ::= (* empty *)
 
 FExp ::= Atom FExp'
 
-LExp ::= “\” var “->” Exp
+LExp ::= "\" var "->" Exp
        | "if" Exp "then" Exp "else" Exp
        | "print" string Atom
        | "get" Atom
        | "put" Atom Atom
-       | “try” Exp “catch” Exp
-       | “let” var “=” Exp “in” Exp
-       | “loop” var “=” Exp “for” var “<” Exp “do” Exp
+       | "try" Exp "catch" Exp
+       | "let" var "=" Exp "in" Exp
+       | "loop" var "=" Exp "for" var "<" Exp "do" Exp
        | FExp
 
 Exp2' ::= (* empty *)
