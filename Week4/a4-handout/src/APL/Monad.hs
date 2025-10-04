@@ -73,10 +73,12 @@ data EvalOp a
   = ReadOp (Env -> a)
   | PrintOp String a
   | ErrorOp Error
+  | TryCatchOp (EvalM Val) (EvalM Val) (Val -> a)
 
 instance Functor EvalOp where
   fmap f (ReadOp k) = ReadOp $ f . k
   fmap f (PrintOp p m) = PrintOp p $ f m
+  fmap f (TryCatchOp m1 m2 k) = TryCatchOp m1 m2 $ f . k
   fmap _ (ErrorOp e) = ErrorOp e
 
 type EvalM a = Free EvalOp a
@@ -105,7 +107,7 @@ failure :: String -> EvalM a
 failure = Free . ErrorOp
 
 catch :: EvalM Val -> EvalM Val -> EvalM Val
-catch = error "TODO"
+catch m1 m2 = Free (TryCatchOp m1 m2 Pure)
 
 evalKvGet :: Val -> EvalM Val
 evalKvGet = error "TODO"
