@@ -96,3 +96,6 @@ runEvalIO evalm = do
           in do
             writeDB db s'
             runEvalIO' r db m
+    runEvalOO' r db (Free (TransactionOp m k)) = do 
+
+
