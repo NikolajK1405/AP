@@ -77,6 +77,7 @@ data EvalOp a
   | TryCatchOp (EvalM Val) (EvalM Val) (Val -> a)
   | KvGetOp Val (Val -> a)
   | KvPutOp Val Val a
+  | TransactionOp (EvalM Val) (Val -> a)
 
 instance Functor EvalOp where
   -- fmap :: (a -> b) -> EvalOp a -> EvalOp b
@@ -87,6 +88,7 @@ instance Functor EvalOp where
   fmap f (TryCatchOp m1 m2 k) = TryCatchOp m1 m2 $ f . k
   fmap f (KvGetOp v k) = KvGetOp v $ f . k
   fmap f (KvPutOp v1 v2 m) = KvPutOp v1 v2 $ f m
+  fmap f (TransactionOp m k) = TransactionOp m $ f . k
 
 type EvalM a = Free EvalOp a
 
@@ -122,8 +124,8 @@ evalKvGet v1 = Free $ KvGetOp v1 $ \v2 -> pure v2
 evalKvPut :: Val -> Val -> EvalM ()
 evalKvPut v1 v2 = Free $ KvPutOp v1 v2 $ pure ()
 
-transaction :: EvalM () -> EvalM ()
-transaction = error "TODO"
+transaction :: EvalM Val -> EvalM Val
+transaction m1 = Free $ TransactionOp m1 $ \v -> pure v
 
 -- | Enclose a computation @m@ such that if a 'breakLoop' is executed in @m@,
 -- execution will return here.

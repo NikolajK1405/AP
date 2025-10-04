@@ -29,3 +29,5 @@ runEval = runEval' envEmpty stateInitial
         Just v -> runEval' r s (k v)
     runEval' r s (Free (KvPutOp key val m)) =
       runEval' r ((key, val) : s) m
+    runEval' r s (Free (TransactionOp)) = 
+      
