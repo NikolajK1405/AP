@@ -7,14 +7,14 @@ module APL.Monad
     askEnv,
     modifyEffects,
     localEnv,
-    evalPrint,
-    catch,
-    failure,
+    getState,
+    putState,
+    modifyState,
     evalKvGet,
     evalKvPut,
-    transaction,
-    looping,
-    breakLoop,
+    evalPrint,
+    failure,
+    catch,
     EvalM,
     Val (..),
     EvalOp (..),
@@ -66,35 +66,31 @@ instance (Functor e) => Applicative (Free e) where
 
 instance (Functor e) => Monad (Free e) where
   Pure x >>= f = f x
-  Free g >>= f = Free $ h <$> g
-    where
-      h x = x >>= f
+  Free g >>= f = Free $ fmap (\x -> x >>= f) g
 
 data EvalOp a
   = ReadOp (Env -> a)
+  | StateGetOp (State -> a)
+  | StatePutOp State a
   | PrintOp String a
   | ErrorOp Error
-  | TryCatchOp (EvalM Val) (EvalM Val) (Val -> a)
 
 instance Functor EvalOp where
   -- fmap :: (a -> b) -> EvalOp a -> EvalOp b
   fmap f (ReadOp k) = ReadOp $ f . k
+  fmap f (StateGetOp k) = StateGetOp $ f . k
+  fmap f (StatePutOp s m) = StatePutOp s $ f m
   fmap f (PrintOp p m) = PrintOp p $ f m
-  fmap _ (ErrorOp e) = ErrorOp e
-  fmap f (TryCatchOp m1 m2 k) = TryCatchOp m1 m2 $ f . k
+  fmap _ (ErrorOp err) = ErrorOp err
 
 type EvalM a = Free EvalOp a
 
 askEnv :: EvalM Env
 askEnv = Free $ ReadOp $ \env -> pure env
 
-modifyEffects ::
-  (Functor e, Functor h) =>
-  (e (Free e a) -> h (Free e a)) ->
-  Free e a ->
-  Free h a
+modifyEffects :: (Functor e, Functor h) => (e (Free e a) -> h (Free e a)) -> Free e a -> Free h a
 modifyEffects _ (Pure x) = Pure x
-modifyEffects g (Free e) = Free $ modifyEffects g <$> g e
+modifyEffects g (Free e) = Free $ fmap (modifyEffects g) $ g e
 
 localEnv :: (Env -> Env) -> EvalM a -> EvalM a
 localEnv f = modifyEffects g
@@ -102,29 +98,28 @@ localEnv f = modifyEffects g
     g (ReadOp k) = ReadOp $ k . f
     g op = op
 
+getState :: EvalM State
+getState = Free $ StateGetOp $ \s -> pure s
+
+putState :: State -> EvalM ()
+putState s = Free $ StatePutOp s $ pure ()
+
+modifyState :: (State -> State) -> EvalM ()
+modifyState f = do
+  s <- getState
+  putState $ f s
+
 evalPrint :: String -> EvalM ()
 evalPrint p = Free $ PrintOp p $ pure ()
 
 failure :: String -> EvalM a
 failure = Free . ErrorOp
 
-catch :: EvalM Val -> EvalM Val -> EvalM Val
-catch m1 m2 = Free $ TryCatchOp m1 m2 $ \v -> pure v
+catch :: EvalM a -> EvalM a -> EvalM a
+catch = error "To be completed in assignment 4."
 
 evalKvGet :: Val -> EvalM Val
-evalKvGet = error "TODO"
+evalKvGet = error "To be completed in assignment 4."
 
 evalKvPut :: Val -> Val -> EvalM ()
-evalKvPut = error "TODO"
-
-transaction :: EvalM () -> EvalM ()
-transaction = error "TODO"
-
--- | Enclose a computation @m@ such that if a 'breakLoop' is executed in @m@,
--- execution will return here.
-looping :: EvalM Val -> EvalM Val
-looping = error "TODO"
-
--- | Return the provided value from the most immediately enclosing 'looping'.
-breakLoop :: Val -> EvalM a
-breakLoop = error "TODO"
+evalKvPut = error "To be completed in assignment 4."
