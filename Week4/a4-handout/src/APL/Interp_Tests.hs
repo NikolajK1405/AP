@@ -29,7 +29,7 @@ pureTests =
           )
           @?= ([], Right [("x", ValInt 1)]),
       --
-      testCase "Let" $
+      testCase "let" $
         eval' (Let "x" (Add (CstInt 2) (CstInt 3)) (Var "x"))
           @?= ([], Right (ValInt 5)),
       --
