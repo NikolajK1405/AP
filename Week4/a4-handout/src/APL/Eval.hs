@@ -63,7 +63,7 @@ eval (ForLoop (loopparam, initial) (iv, bound) body) = do
   bound_v <- eval bound
   case bound_v of
     ValInt bound_int ->
-      loop 0 bound_int initial_v
+      looping $ loop 0 bound_int initial_v
     _ ->
       failure "Non-integral loop bound"
   where
@@ -104,3 +104,7 @@ eval (KvPut ek ev) = do
 eval (KvGet ke) = do
   k <- eval ke
   evalKvGet k
+eval (Transaction e) = transaction $ eval e
+eval (Break e) = do
+  v <- eval e
+  breakLoop v
