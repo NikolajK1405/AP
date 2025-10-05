@@ -30,7 +30,7 @@ runEval m0 = let (p, _, res) = runEval' envEmpty stateInitial m0 in
             (p, s', Left err) -> (p, s', Left err)
     runEval' r s (Free (KvGetOp key k)) =
       case lookup key s of
-        Nothing -> ([], s, Left (ErrFail $ "Unkown key " ++ show key))
+        Nothing -> ([], s, Left (ErrFail $ "Unknown key: " ++ show key))
         Just v -> runEval' r s (k v)
     runEval' r s (Free (KvPutOp key val m)) =
       runEval' r ((key, val) : s) m
