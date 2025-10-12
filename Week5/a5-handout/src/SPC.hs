@@ -31,7 +31,7 @@ import Control.Exception (SomeException, catch)
 import Control.Monad (ap, forever, liftM, void, forM_)
 import GenServer
 import System.Clock.Seconds (Clock (Monotonic), Seconds, getTime)
-import Data.List (partition)
+import Data.List (partition, find)
 import GenServer (requestReply)
 
 -- First some general utility functions.
@@ -57,6 +57,12 @@ tripletRemoveAssoc needle ((k, v, z) : kvzs) =
     then kvzs
     else (k, v, z) : tripletRemoveAssoc needle kvzs
 tripletRemoveAssoc _ [] = []
+
+tripleLookup :: Eq a => a -> [(a,b,c)] -> Maybe (b,c)
+-- lookup :: Eq a => a -> [(a, b)] -> Maybe b
+tripleLookup a bc = do 
+  (_,b,c) <- find (\(a',_,_) -> a' == a) bc
+  pure (b,c)
 
 -- Then the definition of the glorious SPC.
 
@@ -94,6 +100,8 @@ data JobStatus
     JobRunning
   | -- | The job is enqueued, but is waiting for an idle worker.
     JobPending
+
+  | JobCancelled
   deriving (Eq, Ord, Show)
 
 -- | A worker decides its own human-readable name. This is useful for
@@ -125,6 +133,8 @@ data SPCMsg
   
   | MsgJobCrashed JobId
 
+  | MsgJobForced WorkerName JobDoneReason 
+
 -- | A handle to the SPC instance.
 data SPC = SPC (Server SPCMsg)
 
@@ -134,7 +144,7 @@ data Worker = Worker (Server WorkerMsg)
 -- | The central state. Must be protected from the bourgeoisie.
 data SPCState = SPCState
   { spcJobsPending :: [(JobId, Job)],
-    spcJobsRunning :: [(JobId, Job)],
+    spcJobsRunning :: [(JobId, Job, ThreadId)],
     spcJobsDone :: [(JobId, JobDoneReason)],
     spcJobCounter :: JobId,
     -- Workers:
@@ -198,23 +208,10 @@ schedule = do
             onException _ = send (spcChan state) $ MsgJobCrashed jid
         catch action onException
       put $ state {   spcJobsPending = jRst,
-                      spcJobsRunning = (jid, job) : spcJobsRunning state,
+                      spcJobsRunning = (jid, job, t) : spcJobsRunning state,
                       spcWorkers = wRst,
                       spcBusy = (wName, worker, jid) : spcBusy state
                     }
-    
-      -- case lookup wName $ spcWorkers state of
-      --   -- Unkown worker, remove the worker from idle
-      --   Nothing ->  do
-      --     put state { spcIdle = wrst }
-      --     schedule
-      --   Just (Worker wServer) -> do
-      --     io $ sendTo wServer (WorkerStart jid (jobAction job))
-      --     put $ state { spcJobsPending = jrest,
-      --                   spcJobsRunning = (jid, job) : spcJobsRunning state,
-      --                   spcIdle = wrst,
-      --                   spcBusy = (wName, jid) : spcBusy state
-      --                 }
       schedule
     _ -> pure ()
 
@@ -231,7 +228,7 @@ jobDone jid reason = do
       forM_ waiting $ \(_, rsvp) -> io $ reply rsvp $ Just reason
       put $ state { spcWaiting = notWaiting,
                     spcJobsDone = (jid, reason) : spcJobsDone state,
-                    spcJobsRunning = removeAssoc jid (spcJobsRunning state)
+                    spcJobsRunning = tripletRemoveAssoc jid (spcJobsRunning state)
                   }
 
 
@@ -263,7 +260,7 @@ handleMsg c = do
     MsgJobStatus jobid rsvp -> do
       state <- get
       io $ reply rsvp $ case ( lookup jobid $ spcJobsPending state,
-                               lookup jobid $ spcJobsRunning state,
+                               tripleLookup jobid $ spcJobsRunning state,
                                lookup jobid $ spcJobsDone state
                              ) of
         (Just _, _, _) -> Just JobPending
@@ -291,7 +288,18 @@ handleMsg c = do
           io $ reply rsvp $ Just reason
         Nothing ->
           put $ state {spcWaiting = (jid, rsvp) : spcWaiting state}
-    MsgJobCancel _ -> undefined
+    MsgJobCancel jib -> do 
+      s <- get 
+      case find (\(_,_,j) -> j == jib) $ spcBusy s of 
+        Nothing -> pure ()
+        Just (wName, worker, _jib) -> 
+          case find (\(j,_,_) -> j == jib) $ spcJobsRunning s of 
+            Just (_, _, tid)  -> 
+              do 
+                let Worker wSrv = worker 
+                io $ sendTo wSrv (WorkerCancelled tid)
+
+      
     MsgTick -> pure ()
 
 
@@ -318,13 +326,21 @@ startSPC = do
 
 startWorker :: Chan SPCMsg -> WorkerName -> IO Worker
 startWorker spcC name = do
-  server <- spawn $ \workerC -> forever $ do
-    msg <- receive workerC
-    case msg of
-      WorkerStart jid job -> do
-        job
-        send spcC $ MsgJobDone name jid
-  pure $ Worker server
+  server <- spawn $ \workerC ->
+    let loop = do
+              msg <- receive workerC
+              case msg of
+                (WorkerStart jid job) -> do
+                  job
+                  send spcC  $ MsgJobDone name jid
+                  loop
+                (WorkerCancelled tid) -> do 
+                  killThread tid
+                  send spcC $ MsgJobForced name DoneCancelled
+                  loop
+    in loop 
+  pure (Worker server)
+
 
 
 -- | Add a job for scheduling.
