@@ -23,12 +23,18 @@ where
 import Control.Concurrent
   ( forkIO,
     killThread,
-    threadDelay,
+    threadDelay, ThreadId,
   )
 import Control.Monad (ap, forever, liftM, void, forM_)
 import GenServer
 import System.Clock.Seconds (Clock (Monotonic), Seconds, getTime)
 import Data.List (partition)
+import Data.List (find)
+import Data.Tuple (swap)
+import GenServer (requestReply)
+-- import Text.Parsec (Reply)
+
+-- import Data.ByteString (reverse)
 
 -- First some general utility functions.
 
@@ -91,7 +97,8 @@ type WorkerName = String
 -- | Messages sent to workers. These are sent both by SPC and by
 -- processes spawned by the workes.
 data WorkerMsg
-  = WorkerStart JobId (IO ())
+  = WorkerStart JobId (IO ()) (ReplyChan ThreadId)
+  | WorkerStop (ThreadId)
 
 -- Messages sent to SPC.
 data SPCMsg
@@ -108,7 +115,7 @@ data SPCMsg
   | -- | Query whether the worker name is available
     MsgAddWorker WorkerName (ReplyChan (Either String Worker))
   | -- | Sent upon completion of job from worker
-    MsgJobDone WorkerName JobId
+    MsgJobDone WorkerName (JobId, JobDoneReason)
 
 -- | A handle to the SPC instance.
 data SPC = SPC (Server SPCMsg)
@@ -122,6 +129,7 @@ data SPCState = SPCState
     spcJobsRunning :: [(JobId, Job)],
     spcJobsDone :: [(JobId, JobDoneReason)],
     spcJobCounter :: JobId,
+    spcWorkerThreads :: [(WorkerName, ThreadId)],
     -- Workers:
     spcWorkers :: [(WorkerName, Worker)],
     spcIdle :: [WorkerName],
@@ -181,7 +189,7 @@ schedule = do
           put state { spcIdle = wrst }
           schedule
         Just (Worker wServer) -> do
-          io $ sendTo wServer (WorkerStart jid (jobAction job))
+          tid <- io $ requestReply wServer (WorkerStart jid (jobAction job))
           put $ state { spcJobsPending = jrest,
                         spcJobsRunning = (jid, job) : spcJobsRunning state,
                         spcIdle = wrst,
@@ -252,12 +260,12 @@ handleMsg c = do
                         spcIdle = name : spcIdle state
                       }
           io $ reply rsvp $ Right w
-    MsgJobDone name jid -> do
+    MsgJobDone name (jid, reason) -> do
       state <- get
       put $ state { spcBusy = removeAssoc name (spcBusy state),
                     spcIdle = name : spcIdle state
                   }
-      jobDone jid Done
+      jobDone jid reason
     MsgJobWait jid rsvp -> do
       state <- get
       case lookup jid $ spcJobsDone state of
@@ -265,8 +273,22 @@ handleMsg c = do
           io $ reply rsvp $ Just reason
         Nothing ->
           put $ state {spcWaiting = (jid, rsvp) : spcWaiting state}
-    MsgJobCancel _ -> undefined
+    MsgJobCancel jid -> do 
+    -- old MsgJobCancel
+    -- s <- get
+    --   case lookup id $ spcJobsPending s of
+    --     Nothing -> pure ()
+    --     Just _ -> jobDone id DoneCancelled
+      state <- get
+      case lookup jid $ spcJobsRunning state of 
+        Nothing -> pure ()
+        Just _ ->
+          case lookup jid $ map swap $ spcBusy state of  
+            Nothing -> pure ()
+            Just _ -> jobDone jid DoneCancelled
+
     MsgTick -> pure ()
+
 
 
 startSPC :: IO SPC
@@ -290,15 +312,18 @@ startSPC = do
       threadDelay 1000000 -- 1 second
       sendTo c MsgTick
 
-startWorker :: Chan SPCMsg -> WorkerName -> IO Worker
-startWorker spcC name = do
-  server <- spawn $ \workerC -> forever $ do
-    msg <- receive workerC
-    case msg of
-      WorkerStart jid job -> do
+startWorker :: Chan SPCMsg -> WorkerName -> Chan WorkerMsg -> IO ()
+startWorker spcC name workerC = do
+  msg <- receive workerC
+  case msg of
+    WorkerStart jid job rsvp -> do
+      tid <- forkIO $ do
         job
-        send spcC $ MsgJobDone name jid
-  pure $ Worker server
+        send spcC $ MsgJobDone name (jid, Done)
+      reply rsvp tid
+      startWorker spcC name workerC
+    
+
 
 
 -- | Add a job for scheduling.
