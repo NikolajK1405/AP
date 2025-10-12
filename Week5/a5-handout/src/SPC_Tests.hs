@@ -72,24 +72,22 @@ tests =
           val @?= 3,
         
         testCase "multiple jobs: one cancelled, rest complete" $ do
-          spc <- startSPC
-          ref <- newIORef (0 :: Int)
-          let mkJob = Job (threadDelay 500000 >> modifyIORef ref (+1)) 5 
-          j1 <- jobAdd spc mkJob
-          j2 <- jobAdd spc mkJob
-          j3 <- jobAdd spc mkJob
-          _ <- workerAdd spc "w1"
-          threadDelay 100000
-          r1 <- jobWait spc j1
-          threadDelay 100000
-          jobCancel spc j2
-          r2 <- jobWait spc j2
-          r3 <- jobWait spc j3
-          val <- readIORef ref
-          r1 @?= Just Done
-          r2 @?= Just DoneCancelled
-          r3 @?= Just Done
-          val @?= 2,
+            spc <- startSPC
+            ref <- newIORef (0 :: Int)
+            let mkJob = Job (threadDelay 200000 >> modifyIORef ref (+1)) 5
+            j1 <- jobAdd spc mkJob
+            j2 <- jobAdd spc mkJob
+            j3 <- jobAdd spc mkJob
+            jobCancel spc j2
+            _ <- workerAdd spc "w1"
+            r1 <- jobWait spc j1
+            r2 <- jobWait spc j2
+            r3 <- jobWait spc j3
+            val <- readIORef ref
+            r1 @?= Just Done
+            r2 @?= Just DoneCancelled
+            r3 @?= Just Done
+            val @?= 2,
 
         testCase "multiple workers handle multiple jobs" $ do
           spc <- startSPC

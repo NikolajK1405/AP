@@ -325,14 +325,22 @@ handleMsg c = do
 
     MsgJobCancel jib -> do 
       s <- get 
-      case find (\(_,_,j) -> j == jib) $ spcBusy s of 
-        Nothing -> pure ()
-        Just (wName, worker, _jib) -> 
-          case find (\(j,_,_) -> j == jib) (spcJobsRunning s) of
-            Just (_, _, tid) -> do
-              let Worker wSrv = worker
-              io $ sendTo wSrv (WorkerCancelled tid)
-            Nothing -> pure ()
+      case lookup jib (spcJobsPending s) of
+        Just _ -> do
+          put s { spcJobsPending = removeAssoc jib (spcJobsPending s)
+                , spcJobTimer    = removeAssoc jib (spcJobTimer s)
+                }
+          jobDone jib DoneCancelled 
+        Nothing -> do
+            s' <- get
+            case find (\(_,_,j) -> j == jib) $ spcBusy s' of 
+              Nothing -> pure ()
+              Just (wName, worker, _jib) -> 
+                case find (\(j,_,_) -> j == jib) (spcJobsRunning s') of
+                  Just (_, _, tid) -> do
+                    let Worker wSrv = worker
+                    io $ sendTo wSrv (WorkerCancelled tid)
+                  Nothing -> pure ()
 
     MsgJobCrashed jid -> do
       s <- get
@@ -342,7 +350,7 @@ handleMsg c = do
         Nothing -> pure ()
       jobDone jid DoneCrashed
 
-    MsgTick -> pure ()
+    MsgTick -> checkTimeouts
 
 
 startSPC :: IO SPC
