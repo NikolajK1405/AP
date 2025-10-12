@@ -209,7 +209,7 @@ schedule = do
         catch action onException
       put $ state {   spcJobsPending = jRst,
                       spcJobsRunning = (jid, job, t) : spcJobsRunning state,
-                      spcWorkers = wRst,
+                      spcWorkers = spcWorkers state,
                       spcBusy = (wName, worker, jid) : spcBusy state
                     }
       schedule
@@ -288,18 +288,27 @@ handleMsg c = do
           io $ reply rsvp $ Just reason
         Nothing ->
           put $ state {spcWaiting = (jid, rsvp) : spcWaiting state}
+    MsgJobForced wName reason -> do
+      s <- get 
+      case find (\(w,_,_) -> w == wName) (spcBusy s) of
+        Just (_w, _worker, jid) -> do
+          put s { spcBusy = tripletRemoveAssoc wName (spcBusy s) }
+          jobDone jid reason
+        Nothing -> pure ()
+
     MsgJobCancel jib -> do 
       s <- get 
       case find (\(_,_,j) -> j == jib) $ spcBusy s of 
         Nothing -> pure ()
         Just (wName, worker, _jib) -> 
-          case find (\(j,_,_) -> j == jib) $ spcJobsRunning s of 
-            Just (_, _, tid)  -> 
-              do 
-                let Worker wSrv = worker 
-                io $ sendTo wSrv (WorkerCancelled tid)
+          case find (\(j,_,_) -> j == jib) (spcJobsRunning s) of
+            Just (_, _, tid) -> do
+              let Worker wSrv = worker
+              io $ sendTo wSrv (WorkerCancelled tid)
+            Nothing -> pure ()
 
-      
+    MsgJobCrashed id -> jobDone id DoneCrashed
+
     MsgTick -> pure ()
 
 
