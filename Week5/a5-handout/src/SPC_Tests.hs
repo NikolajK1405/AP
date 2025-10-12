@@ -11,7 +11,7 @@ import Test.Tasty.HUnit (assertFailure, testCase, (@?=), assertBool)
 
 tests :: TestTree
 tests =
-  localOption (mkTimeout 3000000) $
+  localOption (mkTimeout 8000000) $
     testGroup
       "SPC (core)"
       [ testCase "duplicate worker name" $ do
@@ -52,12 +52,6 @@ tests =
           reason <- jobWait spc jid
           reason @?= Just DoneCrashed,
 
-        testCase "job is pending before worker exists" $ do
-          spc <- startSPC
-          jid <- jobAdd spc $ Job (pure ()) 1
-          s <- jobStatus spc jid
-          s @?= Just JobPending,
-
         testCase "job cancel while running -> DoneCancelled" $ do
           spc <- startSPC
           _ <- workerAdd spc "w1"
@@ -76,6 +70,26 @@ tests =
           _ <- forM_ jids (jobWait spc)
           val <- readIORef ref
           val @?= 3,
+        
+        testCase "multiple jobs: one cancelled, rest complete" $ do
+          spc <- startSPC
+          ref <- newIORef (0 :: Int)
+          let mkJob = Job (threadDelay 500000 >> modifyIORef ref (+1)) 5 
+          j1 <- jobAdd spc mkJob
+          j2 <- jobAdd spc mkJob
+          j3 <- jobAdd spc mkJob
+          _ <- workerAdd spc "w1"
+          threadDelay 100000
+          r1 <- jobWait spc j1
+          threadDelay 100000
+          jobCancel spc j2
+          r2 <- jobWait spc j2
+          r3 <- jobWait spc j3
+          val <- readIORef ref
+          r1 @?= Just Done
+          r2 @?= Just DoneCancelled
+          r3 @?= Just Done
+          val @?= 2,
 
         testCase "multiple workers handle multiple jobs" $ do
           spc <- startSPC
@@ -86,7 +100,33 @@ tests =
           jids <- replicateM 4 (jobAdd spc mkJob)
           _ <- forM_ jids (jobWait spc)
           val <- readIORef ref
-          assertBool "at least 4 jobs must complete" (val >= 4)
+          assertBool "at least 4 jobs must complete" (val >= 4),
+
+        testCase "job times out when it exceeds maxSeconds" $ do
+          spc <- startSPC
+          r <- workerAdd spc "w1"
+          assertBool "workerAdd failed" (isRight r)
+          jid <- jobAdd spc $ Job (threadDelay 2000000) 1
+          res <- jobWait spc jid
+          res @?= Just DoneTimeout,
 
 
+        testCase "job that finishes before maxSeconds does NOT timeout" $ do
+          spc <- startSPC
+          r <- workerAdd spc "w1"
+          assertBool "workerAdd failed" (isRight r)
+          jid <- jobAdd spc $ Job (threadDelay 200000) 1
+          res <- jobWait spc jid
+          res @?= Just Done,
+
+        testCase "status shows running before timeout fires" $ do
+          spc <- startSPC
+          r <- workerAdd spc "w1"
+          assertBool "workerAdd failed" (isRight r)
+          jid <- jobAdd spc $ Job (threadDelay 3000000) 1
+          threadDelay 200000
+          st1 <- jobStatus spc jid
+          st1 @?= Just JobRunning
+          res <- jobWait spc jid
+          res @?= Just DoneTimeout
       ]

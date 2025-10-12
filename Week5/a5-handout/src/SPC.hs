@@ -147,6 +147,7 @@ data SPCState = SPCState
     spcJobsRunning :: [(JobId, Job, ThreadId)],
     spcJobsDone :: [(JobId, JobDoneReason)],
     spcJobCounter :: JobId,
+    spcJobTimer :: [(JobId, Seconds)],
     -- Workers:
     spcWorkers :: [(WorkerName, Worker)],
     spcBusy :: [(WorkerName, Worker, JobId)],
@@ -200,6 +201,8 @@ schedule = do
   state <- get
   case (spcJobsPending state, spcWorkers state) of
     ((jid, job) : jRst, (wName, worker) : wRst) -> do
+      start <- io getSeconds                              
+      let deadline = start + fromIntegral (jobMaxSeconds job)
       t <- io $ forkIO $ do
         let action = do
               jobAction job
@@ -210,7 +213,8 @@ schedule = do
       put $ state {   spcJobsPending = jRst,
                       spcJobsRunning = (jid, job, t) : spcJobsRunning state,
                       spcWorkers = spcWorkers state,
-                      spcBusy = (wName, worker, jid) : spcBusy state
+                      spcBusy = (wName, worker, jid) : spcBusy state,
+                      spcJobTimer = (jid, deadline) : spcJobTimer state
                     }
       schedule
     _ -> pure ()
@@ -228,7 +232,8 @@ jobDone jid reason = do
       forM_ waiting $ \(_, rsvp) -> io $ reply rsvp $ Just reason
       put $ state { spcWaiting = notWaiting,
                     spcJobsDone = (jid, reason) : spcJobsDone state,
-                    spcJobsRunning = tripletRemoveAssoc jid (spcJobsRunning state)
+                    spcJobsRunning = tripletRemoveAssoc jid (spcJobsRunning state),
+                    spcJobTimer = removeAssoc jid (spcJobTimer state)
                   }
 
 
@@ -239,7 +244,29 @@ workerIsGone :: WorkerName -> SPCM ()
 workerIsGone = undefined
 
 checkTimeouts :: SPCM ()
-checkTimeouts = pure () -- change in Task 4
+-- s <- get
+--   now <- io $ getSeconds
+--   case spcJobRunning s of
+--     Just (id, deadline, t)
+--       | now >= deadline-> do
+--           io $ killThread t
+--           jobDone id DoneTimeout
+--     _ -> pure ()
+checkTimeouts = do 
+  s <- get 
+  now <- io $ getSeconds
+  let dead = [ (jid, dl) | (jid, dl) <- spcJobTimer s, now >= dl ]
+      live = [ (jid, dl) | (jid, dl) <- spcJobTimer s, now < dl ]
+  forM_ dead $ \(jid, _) -> do
+    s1 <- get
+    case find (\(j,_,_) -> j == jid) (spcJobsRunning s1) of
+      Just (_,_,tid) -> io $ killThread tid
+      Nothing ->  pure ()
+    case find (\(_,_,j) -> j==jid) (spcBusy s1) of
+      Just (wName,_,_) ->  put s1 { spcBusy = tripletRemoveAssoc wName (spcBusy s1) }
+      Nothing -> pure ()
+    jobDone jid DoneTimeout
+  modify (\st -> st { spcJobTimer = live })
 
 workerExists :: WorkerName -> SPCM Bool
 workerExists = undefined
@@ -307,7 +334,13 @@ handleMsg c = do
               io $ sendTo wSrv (WorkerCancelled tid)
             Nothing -> pure ()
 
-    MsgJobCrashed id -> jobDone id DoneCrashed
+    MsgJobCrashed jid -> do
+      s <- get
+      case find (\(_,_,j) -> j == jid) (spcBusy s) of
+        Just (wName,_,_) ->
+          put s { spcBusy = tripletRemoveAssoc wName (spcBusy s) }
+        Nothing -> pure ()
+      jobDone jid DoneCrashed
 
     MsgTick -> pure ()
 
@@ -323,14 +356,15 @@ startSPC = do
             spcWorkers = [],
             spcBusy = [],
             spcWaiting = [],
-            spcChan = c
+            spcChan = c,
+            spcJobTimer = []
           }
   c <- spawn $ \c -> runSPCM (initial_state c) $ forever $ handleMsg c
   void $ spawn $ timer c
   pure $ SPC c
   where
     timer c _ = forever $ do
-      threadDelay 1000000 -- 1 second
+      threadDelay 1000000 -- 1,5 seconds
       sendTo c MsgTick
 
 startWorker :: Chan SPCMsg -> WorkerName -> IO Worker
