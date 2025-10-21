@@ -3,7 +3,7 @@ module APL.Tests
   )
 where
 
-import APL.AST (Exp (..), subExp)
+import APL.AST (Exp (..), subExp, VName)
 import APL.Error (isVariableError, isDomainError, isTypeError)
 import APL.Check (checkExp)
 import Test.QuickCheck
@@ -15,10 +15,16 @@ import Test.QuickCheck
   , checkCoverage
   , oneof
   , sized
+  , quickCheck
+  , chooseInt
+  , elements
+  , vectorOf
+  , frequency
+  , sample
   )
 
 instance Arbitrary Exp where
-  arbitrary = sized genExp
+  arbitrary = sized $ \n -> genExp n []
 
   shrink (Add e1 e2) =
     e1 : e2 : [Add e1' e2 | e1' <- shrink e1] ++ [Add e1 e2' | e2' <- shrink e2]
@@ -44,24 +50,46 @@ instance Arbitrary Exp where
     e1 : e2 : [TryCatch e1' e2 | e1' <- shrink e1] ++ [TryCatch e1 e2' | e2' <- shrink e2]
   shrink _ = []
 
-genExp :: Int -> Gen Exp
-genExp 0 = oneof [CstInt <$> arbitrary, CstBool <$> arbitrary]
-genExp size =
-  oneof
-    [ CstInt <$> arbitrary
-    , CstBool <$> arbitrary
-    , Add <$> genExp halfSize <*> genExp halfSize
-    , Sub <$> genExp halfSize <*> genExp halfSize
-    , Mul <$> genExp halfSize <*> genExp halfSize
-    , Div <$> genExp halfSize <*> genExp halfSize
-    , Pow <$> genExp halfSize <*> genExp halfSize
-    , Eql <$> genExp halfSize <*> genExp halfSize
-    , If <$> genExp thirdSize <*> genExp thirdSize <*> genExp thirdSize
-    , Var <$> arbitrary
-    , Let <$> arbitrary <*> genExp halfSize <*> genExp halfSize
-    , Lambda <$> arbitrary <*> genExp (size - 1)
-    , Apply <$> genExp halfSize <*> genExp halfSize 
-    , TryCatch <$> genExp halfSize <*> genExp halfSize
+genVar :: Gen VName
+genVar = do
+  n <- chooseInt (1,3)
+  alpha <- elements ['a' .. 'z']
+  alphaNums <- vectorOf n $ elements $ ['a' .. 'z'] ++ ['0' .. '9']
+  pure (alpha : alphaNums)
+
+
+
+genExp :: Int -> [VName] -> Gen Exp
+genExp 0 [] = oneof [CstInt <$> arbitrary, CstBool <$> arbitrary]
+genExp 0 vs = Var <$> elements vs
+genExp size vs = do
+  let varChance = case vs of
+        [] -> 1
+        _ -> 5
+  frequency
+    [ (10, CstInt <$> arbitrary)
+    , (5, CstBool <$> arbitrary)
+    , (7, Add <$> genExp halfSize vs <*> genExp halfSize vs)
+    , (7, Sub <$> genExp halfSize vs <*> genExp halfSize vs)
+    , (7, Mul <$> genExp halfSize vs <*> genExp halfSize vs)
+    , (5, Div <$> genExp halfSize vs <*> genExp halfSize vs)
+    , (5, Pow <$> genExp halfSize vs <*> genExp halfSize vs)
+    , (5, Eql <$> genExp halfSize vs <*> genExp halfSize vs)
+    , (5, If <$> genExp thirdSize vs <*> genExp thirdSize vs <*> genExp thirdSize vs)
+    , (varChance, Var <$> case vs of
+          [] -> genVar -- Impossible, but here so no warnings
+          _ -> elements vs)
+    , (10, do
+          v <- genVar
+          e1 <- genExp halfSize vs
+          e2 <- genExp halfSize $ v : vs
+          pure $ Let v e1 e2)
+    , (10, do
+          v <- genVar
+          e <- genExp (size - 1) $ v : vs
+          pure $ Lambda v e)
+    , (5, Apply <$> genExp halfSize vs <*> genExp halfSize vs)
+    , (7, TryCatch <$> genExp halfSize vs <*> genExp halfSize vs)
     ]
   where
     halfSize = size `div` 2
