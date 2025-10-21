@@ -3,9 +3,10 @@ module APL.Tests
   )
 where
 
-import APL.AST (Exp (..), subExp)
+import APL.AST (Exp (..), printExp, subExp)
 import APL.Error (isVariableError, isDomainError, isTypeError)
 import APL.Check (checkExp)
+import APL.Parser (parseAPL)
 import Test.QuickCheck
   ( Property
   , Gen
@@ -79,7 +80,17 @@ expCoverage e = checkCoverage
   $ ()
 
 parsePrinted :: Exp -> Bool
-parsePrinted _ = undefined
+parsePrinted e =
+  case parseAPL "input" (printExp e) of
+    Right e' -> e' == e
+    Left _ -> False 
+    
+
+-- parserTest s e =
+--   testCase s $
+--     case parseAPL "input" s of
+--       Left err -> assertFailure err
+--       Right e' -> e' @?= e
 
 onlyCheckedErrors :: Exp -> Bool
 onlyCheckedErrors _ = undefined

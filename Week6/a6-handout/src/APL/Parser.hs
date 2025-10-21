@@ -16,6 +16,7 @@ import Text.Megaparsec
     satisfy,
     some,
     try,
+    option,
   )
 import Text.Megaparsec.Char (space)
 
@@ -48,7 +49,7 @@ lVName = lexeme $ try $ do
 
 lInteger :: Parser Integer
 lInteger =
-  lexeme $ read <$> some (satisfy isDigit) <* notFollowedBy (satisfy isAlphaNum)
+  lexeme $ read <$>((++) <$> option "" (chunk "-") <*> some (satisfy isDigit)) <* notFollowedBy (satisfy isAlphaNum)
 
 lString :: String -> Parser ()
 lString s = lexeme $ void $ chunk s
