@@ -41,15 +41,21 @@ keywords =
 lVName :: Parser VName
 lVName = lexeme $ try $ do
   c <- satisfy isAlpha
-  cs <- many $ satisfy isAlphaNum
+  cs <- many $ satisfy (\c -> isAlphaNum c || c == '\n')
   let v = c : cs
   if v `elem` keywords
     then fail "Unexpected keyword"
     else pure v
 
 lInteger :: Parser Integer
-lInteger =
-  lexeme $ read <$>((++) <$> option "" (chunk "-") <*> some (satisfy isDigit)) <* notFollowedBy (satisfy isAlphaNum)
+lInteger = 
+  lexeme $ choice [
+    try $ 
+      lString "(" *>(lString "-" (read <$> some (satisfy isDigit) <* notFollowedBy (satisfy isAlphaNum))) <* lString ")",
+      read <$> some (satisfy isDigit) <* notFollowedBy (satisfy isAlphaNum)
+  ]
+  -- read <$> some (satisfy isDigit) <* notFollowedBy (satisfy isAlphaNum)
+  -- lexeme $ read <$>((++) <$> option "" (chunk "-") <*> (space *> some (satisfy isDigit))) <* notFollowedBy (satisfy isAlphaNum)
 
 lString :: String -> Parser ()
 lString s = lexeme $ void $ chunk s
