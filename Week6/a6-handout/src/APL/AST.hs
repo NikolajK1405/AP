@@ -32,7 +32,7 @@ printBinOp :: String -> Exp -> Exp -> String
 printBinOp op x y = parens $ printExp x ++ " " ++ op ++ " " ++ printExp y
 
 printExp :: Exp -> String
-printExp (CstInt x) = if x < 0 then parens $ show x else show x
+printExp (CstInt x) = show x
 printExp (CstBool b) = if b then "true" else "false"
 printExp (Add x y) = printBinOp "+" x y
 printExp (Sub x y) = printBinOp "-" x y
@@ -59,9 +59,9 @@ printExp (Let v e1 e2) =
       ++ printExp e2
 printExp (Lambda v body) =
   parens $ "\\" ++ v ++ " -> " ++ printExp body
-printExp (Apply x y) =
+printExp (Apply x y) = parens $
   printExp x ++ " " ++ printExp y
-printExp (TryCatch x y) =
+printExp (TryCatch x y) = parens $ 
   "try " ++ printExp x ++ " catch " ++ printExp y
 
 subExp :: Exp -> [Exp]

@@ -22,6 +22,7 @@ import Test.QuickCheck
   , vectorOf
   , frequency
   , sample
+  , withMaxSuccess 
   )
 
 instance Arbitrary Exp where
@@ -56,19 +57,34 @@ genVar = do
   n <- chooseInt (1,3)
   alpha <- elements ['a' .. 'z']
   alphaNums <- vectorOf n $ elements $ ['a' .. 'z'] ++ ['0' .. '9']
-  pure (alpha : alphaNums)
+  let v = (alpha : alphaNums)
+  if v `elem` keywords
+    then genVar
+    else pure v
+  
 
-
+keywords :: [String]
+keywords =
+  [ "if",
+    "then",
+    "else",
+    "true",
+    "false",
+    "let",
+    "in",
+    "try",
+    "catch"
+  ]
 
 genExp :: Int -> [VName] -> Gen Exp
-genExp 0 [] = oneof [CstInt <$> arbitrary, CstBool <$> arbitrary]
+genExp 0 [] = oneof [CstInt <$> (abs <$> arbitrary), CstBool <$> arbitrary]
 genExp 0 vs = Var <$> elements vs
 genExp size vs = do
   let varChance = case vs of
         [] -> 1
         _ -> 5
   frequency
-    [ (10, CstInt <$> arbitrary)
+    [ (10, CstInt <$> ( abs <$> arbitrary))
     , (5, CstBool <$> arbitrary)
     , (7, Add <$> genExp halfSize vs <*> genExp halfSize vs)
     , (7, Sub <$> genExp halfSize vs <*> genExp halfSize vs)
@@ -114,11 +130,6 @@ parsePrinted e =
     Left _ -> False 
     
 
--- parserTest s e =
---   testCase s $
---     case parseAPL "input" s of
---       Left err -> assertFailure err
---       Right e' -> e' @?= e
 
 onlyCheckedErrors :: Exp -> Bool
 onlyCheckedErrors _ = undefined
